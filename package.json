@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@ethersproject/hardware-wallets": "^5.7.0",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "@openzeppelin/hardhat-upgrades": "^3.1.0",
+    "alchemy-sdk": "^3.2.1",
+    "chai": "^4.4.1",
+    "dotenv": "^16.4.5",
+    "eth-permit": "^0.2.3",
+    "fs": "^0.0.1-security",
+    "hardhat": "^2.22.5",
+    "mysql2": "^3.9.7",
+    "node-fetch": "^3.3.2",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.6"
+  },
+  "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
+}

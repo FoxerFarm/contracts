@@ -1,0 +1,12 @@
+.openzeppelin
+.DS_Store
+.idea
+.env
+
+cache
+artifacts
+
+docker/db/*
+!docker/db/.gitkeep
+
+node_modules
