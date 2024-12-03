@@ -16,7 +16,6 @@ import "./Interfaces/Aave/IDataProvider.sol";
 import "./Interfaces/Aave/ILendingPool.sol";
 import "./Interfaces/Aave/IPoolAddressesProvider.sol";
 import "./Interfaces/Uniswap/ISwapRouter.sol";
-import "./Interfaces/Chainlink/IOracle.sol";
 import "./Interfaces/Foxer/IFoxerVault.sol";
 import "./Interfaces/Foxer/IFoxerStrategy.sol";
 
