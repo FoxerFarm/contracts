@@ -1,152 +1,82 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
 const ERC20ABI = require("../abis/ERC20.json");
 const dotenv = require("dotenv");
 dotenv.config({path: __dirname + '/../' + network.name + '.env'})
 
-describe("Colend USDT", async () => {
+
+describe("FoxerStrategyColend02_USDT_Glyphv4", async () => {
     let owner = (await ethers.getSigners())[0];
-    let admin = (await ethers.getSigners())[3];
-    let feeRecipient = (await ethers.getSigners())[4];
     let tester = (await ethers.getSigners())[1];
     let tester2 = (await ethers.getSigners())[2];
-    let bitcoin = await ethers.getContractAt(ERC20ABI, process.env.BTC_ADDRESS);
-    let usdt = await ethers.getContractAt(ERC20ABI, process.env.USDT_ADDRESS);
+    let admin = (await ethers.getSigners())[3];
+    let feeRecipient = (await ethers.getSigners())[4];
+    let tester3 = (await ethers.getSigners())[5];
+    let coreBTC = await ethers.getContractAt(ERC20ABI, process.env.BTC_ADDRESS);
+    let USDT = await ethers.getContractAt(ERC20ABI, process.env.USDT_ADDRESS);
+    let WCORE = await ethers.getContractAt(ERC20ABI, process.env.WCORE_ADDRESS);
 
     let strategy = ethers.Contract;
-    let strategy2 = ethers.Contract;
     let vault = ethers.Contract;
 
     beforeEach(async () => {
 
-        const deployStrategyImplementation = await ethers.deployContract("FoxerStrategyColend01",
-            [],
-            {
-                signer: owner,
-                gasPrice: ethers.parseUnits('1', 'gwei')
-            }
-        );
-        const tx = deployStrategyImplementation.deploymentTransaction();
-        await tx.wait();
-        await deployStrategyImplementation.waitForDeployment();
-        console.log('strategy implementation:', deployStrategyImplementation.target);
-
-        const deployStrategyFactory = await ethers.deployContract("FoxerStrategyColend01Factory",
+        const deployFoxerStrategyColend02 = await ethers.deployContract("FoxerStrategyColend02",
             [
-                deployStrategyImplementation.target
+                admin.address,
+                USDT.target,
+                coreBTC.target,
+                feeRecipient.address,
+                50,
+                process.env.COLEND_DATA_PROVIDER_ADDRESS,
+                process.env.GLYPH_ROUTER_V4_ADDRESS,
+                10000n, // 0.01 USDT minumum swap threshold
             ],
             {
                 signer: owner,
                 gasPrice: ethers.parseUnits('1', 'gwei')
             }
         );
-        const tx2 = deployStrategyFactory.deploymentTransaction();
-        await tx2.wait();
-        await deployStrategyFactory.waitForDeployment();
-        console.log('strategy factory:', deployStrategyFactory.target);
+        const tx = deployFoxerStrategyColend02.deploymentTransaction();
+        await tx.wait();
+        await deployFoxerStrategyColend02.waitForDeployment();
+        console.log('strategy:', deployFoxerStrategyColend02.target);
 
-        const strategyFactory = await ethers.getContractAt("FoxerStrategyColend01Factory", deployStrategyFactory.target);
-        const tx3 = await strategyFactory.createClone(
-            admin.address,
-            process.env.USDT_ADDRESS,
-            process.env.BTC_ADDRESS,
-            feeRecipient.address,
-            50n,
-            process.env.COLEND_DATA_PROVIDER_ADDRESS,
-            process.env.GLYPH_ROUTER_V2_ADDRESS,
-            [ process.env.USDT_ADDRESS, process.env.WCORE_ADDRESS, process.env.BTC_ADDRESS ],
-            10000n, // 0.01 USDT minumum swap threshold
+        strategy = await ethers.getContractAt("FoxerStrategyColend02", deployFoxerStrategyColend02.target);
+
+        // Best route = USDT -> WCORE -> coreBTC
+        await strategy.connect(admin).setSwapHops(
+            [ USDT.target, WCORE.target, coreBTC.target ],
             {
-                signer: owner,
                 gasPrice: ethers.parseUnits('1', 'gwei')
             }
         );
-        await tx3.wait();
-
-        // Get latest clone
-        const strategyClone = await strategyFactory.latestClone();
-        console.log('strategy clone 1:', strategyClone);
-
-        strategy = await ethers.getContractAt("FoxerStrategyColend01", strategyClone);
-
-        const tx4 = await strategyFactory.createClone(
-            admin.address,
-            process.env.USDT_ADDRESS,
-            process.env.BTC_ADDRESS,
-            feeRecipient.address,
-            50n,
-            process.env.COLEND_DATA_PROVIDER_ADDRESS,
-            process.env.GLYPH_ROUTER_V2_ADDRESS,
-            [ process.env.USDT_ADDRESS, process.env.WCORE_ADDRESS, process.env.BTC_ADDRESS ],
-            10000n, // 0.01 USDT minumum swap threshold
-            {
-                signer: owner,
-                gasPrice: ethers.parseUnits('1', 'gwei')
-            }
-        );
-        await tx4.wait();
-
-        // Get latest clone
-        const strategyClone2 = await strategyFactory.latestClone();
-        console.log('strategy clone 2:', strategyClone2);
-
-        strategy2 = await ethers.getContractAt("FoxerStrategyColend01", strategyClone2);
 
         console.log('------------------------------------------------');
 
-        const deployVaultImplementation = await ethers.deployContract("FoxerVault",
-            [],
-            {
-                signer: owner,
-                gasPrice: ethers.parseUnits('1', 'gwei')
-            }
-        );
-        const tx5 = deployVaultImplementation.deploymentTransaction();
-        await tx5.wait();
-        await deployVaultImplementation.waitForDeployment();
-        console.log('vault implementation:', deployVaultImplementation.target);
-
-        const deployVaultFactory = await ethers.deployContract("FoxerVaultFactory",
+        const deployFoxerVault = await ethers.deployContract("FoxerVaultV2",
             [
-                deployVaultImplementation.target
+                admin.address,
+                coreBTC.target,
+                strategy.target,
+                "Foxer USDT",
+                "fxUSDT",
+                60,
             ],
             {
                 signer: owner,
                 gasPrice: ethers.parseUnits('1', 'gwei')
             }
         );
-        const tx6 = deployVaultFactory.deploymentTransaction();
-        await tx6.wait();
-        await deployVaultFactory.waitForDeployment();
-        console.log('vault factory:', deployVaultFactory.target);
+        const tx4 = deployFoxerVault.deploymentTransaction();
+        await tx4.wait();
+        await deployFoxerVault.waitForDeployment();
+        console.log('vault:', deployFoxerVault.target);
 
-        const vaultFactory = await ethers.getContractAt("FoxerVaultFactory", deployVaultFactory.target);
-        const tx7 = await vaultFactory.createClone(
-            admin.address,
-            process.env.BTC_ADDRESS,
-            strategy.target,
-            "Foxer USDT (Colend)",
-            "fxUSDT",
-            0,
-            {
-                signer: owner,
-                gasPrice: ethers.parseUnits('1', 'gwei')
-            }
-        );
-        await tx7.wait();
-
-        // Get latest clone
-        const vaultClone = await vaultFactory.latestClone();
-        console.log('vault clone:', vaultClone);
-
-        vault = await ethers.getContractAt("FoxerVault", vaultClone);
+        vault = await ethers.getContractAt("FoxerVaultV2", deployFoxerVault.target);
 
         // console.log('strategy.setVault...');
         await strategy.connect(admin).setVault(vault.target, {
-            gasPrice: ethers.parseUnits('1', 'gwei')
-        });
-
-        await strategy2.connect(admin).setVault(vault.target, {
             gasPrice: ethers.parseUnits('1', 'gwei')
         });
 
@@ -156,21 +86,27 @@ describe("Colend USDT", async () => {
         console.log('strategy:', strategy.target);
         console.log('vault:', vault.target);
 
-        console.log('Send 50 USDT to tester2');
-        await usdt.connect(tester).transfer(tester2.address, ethers.parseUnits('50', 6));
+        const tr1 = await USDT.connect(tester3).transfer(tester.address, ethers.parseUnits('100', 6));
+        await tr1.wait();
+        const tr2 = await USDT.connect(tester3).transfer(tester2.address, ethers.parseUnits('100', 6));
+        await tr2.wait();
 
-        const usdtBalance = await usdt.balanceOf(tester.address);
-        console.log('usdtBalance:', ethers.formatUnits(usdtBalance.toString(), 6));
+        const USDTBalance = await USDT.balanceOf(tester.address);
+        console.log('USDT Balance (1):', ethers.formatUnits(USDTBalance.toString(), 6));
 
-        const usdtBalance2 = await usdt.balanceOf(tester2.address);
-        console.log('usdtBalance:', ethers.formatUnits(usdtBalance2.toString(), 6));
+        const USDTBalance2 = await USDT.balanceOf(tester2.address);
+        console.log('USDT Balance (2):', ethers.formatUnits(USDTBalance2.toString(), 6));
+
+        // USDTBalance must be at least 100
+        expect(USDTBalance, 'USDT Balance of tester 1 must be at least $100').to.be.gte(ethers.parseUnits('100', 6));
+        expect(USDTBalance2, 'USDT Balance of tester 2 must be at least $100').to.be.gte(ethers.parseUnits('100', 6));
 
         console.log('Approve USDT...');
-        await usdt.connect(tester).approve(vault.target, usdtBalance);
-        await usdt.connect(tester2).approve(vault.target, usdtBalance2);
+        await USDT.connect(tester).approve(vault.target, USDTBalance);
+        await USDT.connect(tester2).approve(vault.target, USDTBalance2);
 
-        console.log('Deposit 240 USDT...');
-        await vault.connect(tester).deposit(usdtBalance, 1000n);
+        console.log('Deposit USDT...');
+        await vault.connect(tester).deposit(USDTBalance, 1666);
 
         console.log('Get balance of fxUSDT...');
         const fxUsdtBalance = await vault.balanceOf(tester.address);
@@ -191,7 +127,7 @@ describe("Colend USDT", async () => {
         // Check available rewards
         console.log('Get available rewards...');
         const rewards = await strategy.estimatedRewardsAvailable();
-        console.log('rewards:', ethers.formatUnits(rewards.toString(), 8), 'bitcoin estimated');
+        console.log('rewards:', ethers.formatUnits(rewards.toString(), 6), 'USDT estimated to be converted to coreBTC');
 
         let rd = await vault.accRewardPerShare();
         let rd1 = await vault.userRewardDebt(tester.address);
@@ -204,13 +140,10 @@ describe("Colend USDT", async () => {
         console.log('--------------------------');
         console.log('[Tester 1] Harvest...');
 
-        const estimated1 = await vault.estimatedPendingRewards(tester.address);
-        console.log('estimated1:', ethers.formatUnits(estimated1.toString(), 8));
+        await vault.connect(tester).harvest(1666);
 
-        await vault.connect(tester).harvest(1000n);
-
-        const bitcoinBalanceAfter1 = await bitcoin.balanceOf(tester.address);
-        console.log('bitcoinBalance after (tester):', ethers.formatUnits(bitcoinBalanceAfter1.toString(), 8));
+        const coreBTCBalanceAfter1 = await coreBTC.balanceOf(tester.address);
+        console.log('coreBTCBalance after (tester):', ethers.formatUnits(coreBTCBalanceAfter1.toString(), 8));
 
         rd = await vault.accRewardPerShare();
         rd1 = await vault.userRewardDebt(tester.address);
@@ -225,18 +158,27 @@ describe("Colend USDT", async () => {
         await ethers.provider.send('hardhat_mine', ["0xF099C0"]);
 
         console.log('--------------------------');
-        console.log('Propose strategy change...');
+        console.log('[Tester 1] Send half of his shares to tester 2');
 
-        await vault.connect(admin).proposeStrat(strategy2.target);
+        const halfFxUsdtBalance = fxUsdtBalance / 2n;
+        console.log('halfFxUsdtBalance:', halfFxUsdtBalance);
 
-        console.log('Approve strategy change...');
-        await vault.connect(admin).upgradeStrat();
+        await vault.connect(tester).transfer(tester2.address, halfFxUsdtBalance);
 
-        console.log('Strat changed to:', await vault.strategy());
+        const fxUsdtBalanceAfterTransfer = await vault.balanceOf(tester.address);
+        console.log('fxUsdtBalance (tester, after):', fxUsdtBalanceAfterTransfer);
+
+        const fxUsdtBalance2AfterTransfer = await vault.balanceOf(tester2.address);
+        console.log('fxUsdtBalance (tester2, after):', fxUsdtBalance2AfterTransfer);
+
+        // Simulate 1 hour wait
+        console.log('Simulating wait around 1 year and 15,768,000 blocks...');
+        await ethers.provider.send('evm_increaseTime', [86400 * 365]);
+        await ethers.provider.send('hardhat_mine', ["0xF099C0"]);
 
         console.log('--------------------------');
         console.log('[Tester 2] deposit...');
-        await vault.connect(tester2).deposit(usdtBalance2, 1000n);
+        await vault.connect(tester2).deposit(USDTBalance2, 1666);
 
         const fxUsdtBalance2 = await vault.balanceOf(tester2.address);
         console.log('fxUsdtBalance (tester2):', ethers.formatUnits(fxUsdtBalance2.toString(), 6));
@@ -254,11 +196,11 @@ describe("Colend USDT", async () => {
         await ethers.provider.send('hardhat_mine', ["0xF099C0"]);
 
 
-        const bitcoinBalance = await bitcoin.balanceOf(tester.address);
-        console.log('bitcoinBalance (tester):', ethers.formatUnits(bitcoinBalance.toString(), 8));
+        const coreBTCBalance = await coreBTC.balanceOf(tester.address);
+        console.log('coreBTCBalance (tester):', ethers.formatUnits(coreBTCBalance.toString(), 8));
 
-        const bitcoinBalanceFeeRecipient = await bitcoin.balanceOf(feeRecipient.address);
-        console.log('bitcoinBalance (feeRecipient):', ethers.formatUnits(bitcoinBalanceFeeRecipient.toString(), 8));
+        const coreBTCBalanceFeeRecipient = await coreBTC.balanceOf(feeRecipient.address);
+        console.log('coreBTCBalance (feeRecipient):', ethers.formatUnits(coreBTCBalanceFeeRecipient.toString(), 8));
 
         const aUSDTBalance3 = await aUSDT.balanceOf(strategy.target);
         console.log('aUSDTBalance (strat):', ethers.formatUnits(aUSDTBalance3.toString(), 6));
@@ -275,7 +217,7 @@ describe("Colend USDT", async () => {
         console.log('* userRewardDebt (tester2):', rd2);
 
         console.log('[Tester 1] Withdraw...');
-        await vault.connect(tester).withdraw(fxUsdtBalance, 1000n);
+        await vault.connect(tester).withdraw(fxUsdtBalance, 1666);
 
         // Simulate 1 hour wait
         console.log('Simulating wait around 1 year and 15,768,000 blocks...');
@@ -288,13 +230,13 @@ describe("Colend USDT", async () => {
         const estimated2 = await vault.estimatedPendingRewards(tester2.address);
         console.log('estimated2:', ethers.formatUnits(estimated2.toString(), 8));
 
-        const tester2bitcoinBefore = await bitcoin.balanceOf(tester2.address);
-        console.log('bitcoinBalance before (tester2):', ethers.formatUnits(tester2bitcoinBefore.toString(), 8));
+        const tester2coreBTCBefore = await coreBTC.balanceOf(tester2.address);
+        console.log('coreBTCBalance before (tester2):', ethers.formatUnits(tester2coreBTCBefore.toString(), 8));
 
-        await vault.connect(tester2).harvest(1000n);
+        await vault.connect(tester2).harvest(1666);
 
-        const tester2bitcoinAfter = await bitcoin.balanceOf(tester2.address);
-        console.log('bitcoinBalance after (tester2):', ethers.formatUnits(tester2bitcoinAfter.toString(), 8));
+        const tester2coreBTCAfter = await coreBTC.balanceOf(tester2.address);
+        console.log('coreBTCBalance after (tester2):', ethers.formatUnits(tester2coreBTCAfter.toString(), 8));
 
         // Simulate 1 hour wait
         console.log('Simulating wait around 1 year and 15,768,000 blocks...');
@@ -308,8 +250,8 @@ describe("Colend USDT", async () => {
         console.log('* userRewardDebt (tester) :', rd1);
         console.log('* userRewardDebt (tester2):', rd2);
 
-        const usdtBalance3 = await usdt.balanceOf(tester.address);
-        console.log('usdtBalance (tester):', ethers.formatUnits(usdtBalance3.toString(), 6));
+        const USDTBalance3 = await USDT.balanceOf(tester.address);
+        console.log('USDTBalance (tester):', ethers.formatUnits(USDTBalance3.toString(), 6));
 
         // Simulate 1 hour wait
         console.log('Simulating wait around 1 year and 15,768,000 blocks...');
@@ -333,14 +275,14 @@ describe("Colend USDT", async () => {
         const harvestableRewards = await vault.harvestableRewards(tester2.address);
         console.log('harvestableRewards:', ethers.formatUnits(harvestableRewards.toString(), 8));
 
-        const vaultbitcoinBalance = await bitcoin.balanceOf(vault.target);
-        console.log('bitcoinBalance (vault):', ethers.formatUnits(vaultbitcoinBalance.toString(), 8));
+        const vaultcoreBTCBalance = await coreBTC.balanceOf(vault.target);
+        console.log('coreBTCBalance (vault):', ethers.formatUnits(vaultcoreBTCBalance.toString(), 8));
 
         const aTokenBalance = await aUSDT.balanceOf(strategy.target);
         console.log('aTokenBalance (strat):', ethers.formatUnits(aTokenBalance.toString(), 6));
 
-        const usdtBalanceStrat = await usdt.balanceOf(strategy.target);
-        console.log('USDT Balance (strat):', ethers.formatUnits(usdtBalanceStrat.toString(), 6));
+        const USDTBalanceStrat = await USDT.balanceOf(strategy.target);
+        console.log('USDT Balance (strat):', ethers.formatUnits(USDTBalanceStrat.toString(), 6));
 
         rd = await vault.accRewardPerShare();
         rd1 = await vault.userRewardDebt(tester.address);
@@ -350,13 +292,13 @@ describe("Colend USDT", async () => {
         console.log('* userRewardDebt (tester2):', rd2);
 
         console.log('[Tester 2] Withdraw:', fxUsdtBalance2, 'fxUSDT');
-        await vault.connect(tester2).withdraw(fxUsdtBalance2, 1000n);
+        await vault.connect(tester2).withdraw(fxUsdtBalance2, 1666);
 
-        const usdtBalance4 = await usdt.balanceOf(tester2.address);
-        console.log('usdtBalance (tester2):', ethers.formatUnits(usdtBalance4.toString(), 6));
+        const USDTBalance4 = await USDT.balanceOf(tester2.address);
+        console.log('USDTBalance (tester2):', ethers.formatUnits(USDTBalance4.toString(), 6));
 
-        const bitcoinBalance2 = await bitcoin.balanceOf(tester2.address);
-        console.log('bitcoinBalance (tester2):', ethers.formatUnits(bitcoinBalance2.toString(), 8));
+        const coreBTCBalance2 = await coreBTC.balanceOf(tester2.address);
+        console.log('coreBTCBalance (tester2):', ethers.formatUnits(coreBTCBalance2.toString(), 8));
 
         const aUSDTBalance4 = await aUSDT.balanceOf(strategy.target);
         console.log('aUSDTBalance (strat):', ethers.formatUnits(aUSDTBalance4.toString(), 6));

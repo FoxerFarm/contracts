@@ -1,16 +1,22 @@
+/**
+Foxer Farm - Yield optimizer
+🦊 Website: https://foxer.farm/
+🦊 X: https://x.com/foxerfarm
+🦊 Telegram: https://t.me/foxerfarm
+**/
+
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./Interfaces/Foxer/IFoxerStrategy.sol";
 import "./Interfaces/Foxer/IFoxerVault.sol";
 
-contract FoxerVault is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
-    uint256 public version = 1;
+contract FoxerVaultV2 is ERC20, Ownable, ReentrancyGuard {
     IERC20 public bitcoin;
     address public feeRecipient;
     uint256 public accRewardPerShare;
@@ -37,27 +43,26 @@ contract FoxerVault is ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgr
         _;
     }
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
     /**
      * @dev Sets the value of {token} to the token that the vault will
      * hold as underlying value. It initializes the vault's own 'moo' token.
      * This token is minted when someone does a deposit. It is burned in order
      * to withdraw the corresponding portion of the underlying assets.
-     * @param _owner the address of the owner of the vault.
+     * @param _admin the address of the owner of the vault.
      * @param _bitcoin the address of bitcoin.
      * @param _strategy the address of the strategy.
      * @param _name the name of the vault token.
      * @param _symbol the symbol of the vault token.
      * @param _approvalDelay the delay before a new strat can be approved.
      */
-    function initialize(address _owner, address _bitcoin, address _strategy, string memory _name, string memory _symbol, uint256 _approvalDelay) public initializer {
-        __ERC20_init(_name, _symbol);
-        __Ownable_init(_owner);
-        __ReentrancyGuard_init();
+    constructor(
+        address _admin,
+        address _bitcoin,
+        address _strategy,
+        string memory _name,
+        string memory _symbol,
+        uint256 _approvalDelay
+    ) Ownable(_admin) ERC20(_name, _symbol) {
         bitcoin = IERC20(_bitcoin);
         strategy = IFoxerStrategy(_strategy);
         approvalDelay = _approvalDelay;

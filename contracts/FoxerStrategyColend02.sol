@@ -1,82 +1,68 @@
+/**
+Foxer Farm - Yield optimizer
+🦊 Website: https://foxer.farm/
+🦊 X: https://x.com/foxerfarm
+🦊 Telegram: https://t.me/foxerfarm
+**/
+
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Interfaces/IERC20.sol";
 import "./Interfaces/Aave/IDataProvider.sol";
 import "./Interfaces/Aave/ILendingPool.sol";
 import "./Interfaces/Aave/IPoolAddressesProvider.sol";
-import "./Interfaces/Uniswap/IUniswapV2Router02.sol";
+import "./Interfaces/Uniswap/ISwapRouter.sol";
+import "./Interfaces/Chainlink/IOracle.sol";
 import "./Interfaces/Foxer/IFoxerVault.sol";
 import "./Interfaces/Foxer/IFoxerStrategy.sol";
 
-contract FoxerStrategyColend01 is IFoxerStrategy, PausableUpgradeable, OwnableUpgradeable {
-
-    uint256 public version = 1;
-
-    address public vault;
-
-    // Wrapped bitcoin token on this blockchain
-    address public bitcoin;
-
-    // The underlying token we are going to farm on Aave (i.e. USDT)
-    address public want;
-
-    // The Aave aToken we are going to receive
-    address public aToken;
-
-    // Third party contracts
-    IDataProvider public dataProvider; // Aave data provider contract, giving addresses of lending pool and tokens
-    ILendingPool public lendingPool; // The Aave lending pool contract
-    IUniswapV2Router02 public swapRouter; // The UniswapV2 dex contract
-
+contract FoxerStrategyColend02 is IFoxerStrategy, Pausable, Ownable {
+    address public vault; // The vault this strategy belongs to
+    address public bitcoin; // Wrapped bitcoin token on this blockchain
+    address public want; // The underlying token we are going to farm on Aave (i.e. USDT)
+    address public aToken; // The aToken we are going to receive
+    address[] public swapHops; // Glyph exchange doesn't use the regular v3 bytes path, it's a list of abi-encoded addresses without fees
+    bytes private swapPath; // The compiled bytes will be saved for easier use
     uint256 public lastHarvest;
     uint256 public lastATokenBalance;
     uint256 public performanceFeePer1000;
     uint256 public swapThreshold;
     address public feeRecipient;
-    address[] public swapPath;
-
     uint256 private eWantDecimals;
     bool private isSwapEnabled;
     bool public isRetired;
+
+    // Third party contracts
+    IDataProvider public dataProvider; // Colend data provider, giving addresses of lending pool and tokens
+    ILendingPool public lendingPool; // Colend pool contract
+    ISwapRouter public swapRouter; // UniswapV3 compatible router (Glyph exchange v4)
 
     modifier onlyVault() {
         require(msg.sender == vault, "!vault");
         _;
     }
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
-    function initialize(
-        address _owner,
+    constructor(
+        address _admin,
         address _want,
         address _bitcoin,
         address _feeRecipient,
         uint256 _performanceFeePer1000,
         address _dataProvider,
         address _swapRouter,
-        address[] calldata _swapPath,
         uint256 _swapThreshold
-    ) public initializer {
-        __Ownable_init(_owner);
-        __Pausable_init();
-
+    ) Ownable(_admin) {
         want = _want;
         bitcoin = _bitcoin;
         feeRecipient = _feeRecipient;
         performanceFeePer1000 = _performanceFeePer1000;
         dataProvider = IDataProvider(_dataProvider);
         lendingPool = ILendingPool(IPoolAddressesProvider(dataProvider.ADDRESSES_PROVIDER()).getPool());
-        swapRouter = IUniswapV2Router02(payable(_swapRouter));
-        for (uint256 i = 0; i < _swapPath.length; i++) {
-            swapPath.push(_swapPath[i]);
-        }
+        swapRouter = ISwapRouter(payable(_swapRouter));
         swapThreshold = _swapThreshold;
         (aToken,,) = IDataProvider(dataProvider).getReserveTokensAddresses(_want);
         isSwapEnabled = true;
@@ -180,29 +166,6 @@ contract FoxerStrategyColend01 is IFoxerStrategy, PausableUpgradeable, OwnableUp
     }
 
     /**
-    * @dev Swaps the rewards for bitcoin
-    */
-    function _swapRewards(uint256 _amountIn, uint256 _satoshisPerWant) internal returns (uint256) {
-        // Security in case the swap keeps failing, we can disable it
-        if (!isSwapEnabled) {
-            return 0;
-        }
-
-        uint256 amountOutMinimum = _amountIn * _satoshisPerWant / eWantDecimals;
-
-        // Swap into bitcoin
-        uint256[] memory amountsOut = swapRouter.swapExactTokensForTokens(
-            _amountIn,
-            amountOutMinimum,
-            swapPath,
-            address(this),
-            block.timestamp
-        );
-
-        return amountsOut[amountsOut.length - 1];
-    }
-
-    /**
     * @dev Returns supply and borrow balance
     */
     function userReserves() public view returns (uint256, uint256) {
@@ -250,8 +213,52 @@ contract FoxerStrategyColend01 is IFoxerStrategy, PausableUpgradeable, OwnableUp
         if (harvestableTokens < swapThreshold) {
             return 0;
         }
-        uint256[] memory amountsOut = swapRouter.getAmountsOut(harvestableTokens, swapPath);
-        return amountsOut[amountsOut.length - 1] * (1000 - performanceFeePer1000) / 1000;
+        //uint256[] memory amountsOut = swapRouter.getAmountsOut(harvestableTokens, swapPath);
+        //return amountsOut[amountsOut.length - 1] * (1000 - performanceFeePer1000) / 1000;
+        // @todo make a quote and return the number of BTC harvestable after fees
+        return harvestableTokens * (1000 - performanceFeePer1000) / 1000;
+    }
+
+
+    /**
+    * @dev Swaps the rewards for WBTC
+    */
+    function _swapRewards(uint256 _amountIn, uint256 _satoshisPerWant) internal returns (uint256) {
+        // Security in case the swap keeps failing, we can disable it
+        if (!isSwapEnabled) {
+            return 0;
+        }
+
+        uint256 amountOutMinimum = _satoshisPerWant * _amountIn / eWantDecimals;
+        //uint256 amountOutMinimum = 0;
+
+
+        // Swap into WBTC
+        ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+            path: getPathBytes(),
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: _amountIn,
+            amountOutMinimum: amountOutMinimum
+        });
+
+        return swapRouter.exactInput(params);
+    }
+
+    function getPathBytes() public view returns (bytes memory path) {
+        path = abi.encodePacked(swapHops[0]);
+        for (uint256 i = 1; i < swapHops.length; i++) {
+            path = abi.encodePacked(path, swapHops[i]);
+        }
+    }
+
+    function setSwapHops(address[] memory _hops) external onlyOwner {
+        require(_hops.length >= 2, "invalid swap hops");
+        delete swapHops;
+        for (uint256 i = 0; i < _hops.length; i++) {
+            swapHops.push(_hops[i]);
+        }
+        swapPath = getPathBytes();
     }
 
     function setVault(address _vault) external onlyOwner {
@@ -261,6 +268,10 @@ contract FoxerStrategyColend01 is IFoxerStrategy, PausableUpgradeable, OwnableUp
 
     function setSwapThreshold(uint256 _swapThreshold) external onlyOwner {
         swapThreshold = _swapThreshold;
+    }
+
+    function setSwapEnabled(bool _isEnabled) external onlyOwner {
+        isSwapEnabled = _isEnabled;
     }
 
     // called as part of strat migration. Sends all the available funds back to the vault.
